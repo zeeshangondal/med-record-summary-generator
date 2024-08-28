@@ -24,8 +24,10 @@ def main():
 
     # Create (or update) the data store.
     documents = load_documents()
-    print(documents[0].metadata["source"].split("/")[-1])
-    print(documents[0])
+    # print(documents[0].metadata["source"].split("/")[-1], documents[1].metadata["page"])
+    # print(documents[0])
+    
+    
     
     chunks = split_documents(documents)
     add_to_chroma(chunks)
@@ -36,7 +38,15 @@ def load_documents():
     return document_loader.load()
 
 
+def append_references(documents):
+    for i in range(len(documents)):        
+        source_filename = documents[i].metadata['source'].split("/")[-1]
+        page_number = documents[i].metadata['page']
+        reference = f"Record Reference: {source_filename} - P{page_number}"
+        documents[i].page_content = documents[i].page_content + "\n" + reference
+        
 def split_documents(documents: list[Document]):
+    append_references(documents)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=100,
         chunk_overlap=10,
@@ -73,8 +83,6 @@ def add_to_chroma(chunks: list[Document]):
 
 def calculate_chunk_ids(chunks):
 
-    # This will create IDs like "data/monopoly.pdf:6:2"
-    # Page Source : Page Number : Chunk Index
 
     last_page_id = None
     current_chunk_index = 0
