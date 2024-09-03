@@ -23,78 +23,71 @@ def extract_text_from_pdf(pdf_path):
             text += reader.pages[page].extract_text()
         return text
 
-def generate_pdf_table(rows, output_pdf="output.pdf"):
-    # Define headers
-    headers = ["Visited Date", "Diagnosis/Prognosis", "Record Reference"]
-    
-    # Split the response text into rows based on newlines
-    
-    # Initialize PDF
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    
-    # Set font and size
-    pdf.set_font("Arial", size=7)
-    
-    # Add headers
-    for header in headers:
-        pdf.cell(63, 10, header, border=1)
-    pdf.ln(10)
-    
-    # Process each row
-    for row in rows:
-        # Initialize empty cells
-        visited_date = row[0]
-        diagnosis_prognosis = [1]
-        record_reference = [2]
-        
-        # Add row data to the table
-        pdf.cell(63, 10, visited_date, border=1)
-        pdf.cell(63, 10, diagnosis_prognosis, border=1)
-        pdf.cell(63, 10, record_reference, border=1)
-        pdf.ln(10)
-
-    # Output the PDF
-    pdf.output(output_pdf)
 
 
 
 
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+import re
+
+def sanitize_date(date_str):
+    """Remove unwanted characters from the date string, allowing only digits, '-', ',' and '/'."""
+    return re.sub(r'[^\d\-,/]', '', date_str)
 
 def create_pdf(data, filename="output.pdf"):
-    # Create a PDF document
-    pdf = SimpleDocTemplate(filename, pagesize=letter)
-    
+    # Create a PDF document with adjusted margins
+    pdf = SimpleDocTemplate(
+        filename,
+        pagesize=letter,
+        rightMargin=inch*0.75,
+        leftMargin=inch*0.75,
+        topMargin=inch*0.75,
+        bottomMargin=inch*0.75
+    )
+
     # Define the headers
     headers = ["Visited Date", "Diagnosis/Prognosis", "Record Reference"]
 
-    # Add headers and data to the table
-    table_data = [headers] + data
+    # Process the data to sanitize the date column
+    sanitized_data = []
+    for row in data:
+        # Sanitize the date (first column) in each row
+        sanitized_row = [sanitize_date(row[0])] + row[1:]
+        sanitized_data.append(sanitized_row)
+
+    # Add headers and sanitized data to the table
+    table_data = [headers] + sanitized_data
+
+    # Define column widths (adjust as necessary)
+    column_widths = [2*inch, 3*inch, 2.5*inch]  # Example widths, adjust to fit your content
 
     # Create the table with the data
-    table = Table(table_data)
+    table = Table(table_data, colWidths=column_widths)
 
     # Define the style for the table
     style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),  # Text size is set to 8 points
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),  # Bold for headers
+        ('FONTSIZE', (0, 0), (-1, 0), 10),  # Text size is set to 10 points for headers
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Align text to the top of cells
+        ('WORDWRAP', (0, 0), (-1, -1), 'C'),  # Wrap text within cells
     ])
 
     table.setStyle(style)
 
     # Build the PDF with the table
     pdf.build([table])
+
 
 def main():
     input_dir="./data"
@@ -117,7 +110,8 @@ def main():
         doc_text=extract_text_from_pdf(input_dir+"/" +file)
         query_text=query_prefix+file+ """
         """  +doc_text
-        result.append(query_rag(query_text,model).strip(" ").replace("\n","").split("--") )    
+        
+        result.append(query_rag(query_text,model).strip(" ").replace("\n","").replace("*","").split("--") )    
         
     for res in result:
         print(res)
