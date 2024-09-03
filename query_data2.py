@@ -2,9 +2,10 @@ import argparse
 from langchain_community.llms.ollama import Ollama
 import os
 from PyPDF2 import PdfReader
+import sys
 
 from fpdf import FPDF
-
+from datetime import datetime
 
 def get_pdf_filenames(directory):
     return [file for file in os.listdir(directory) if file.endswith('.pdf')]
@@ -33,11 +34,51 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 import re
 
-def sanitize_date(date_str):
-    """Remove unwanted characters from the date string, allowing only digits, '-', ',' and '/'."""
-    return re.sub(r'[^\d\-,/]', '', date_str)
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from datetime import datetime
+import re
 
-def create_pdf(data, filename="output.pdf"):
+def sanitize_date(date_str):
+    """Convert various date formats to a uniform YYYY,MM,DD format."""
+    # Define possible date formats
+    date_formats = [
+        "%Y-%m-%d",  # Format like 2000-03-08
+        "%d/%m/%Y",  # Format like 20/08/2020
+        "%d-%m-%Y"   # Format like 08-03-2000
+    ]
+
+    # Remove unwanted characters and standardize the date separators
+    cleaned_date = re.sub(r'[^\d/-]', '', date_str)
+
+    for fmt in date_formats:
+        try:
+            # Try parsing the date with the current format
+            parsed_date = datetime.strptime(cleaned_date, fmt)
+            # Return the date in the desired format YYYY,MM,DD
+            return parsed_date.strftime("%Y,%m,%d")
+        except ValueError:
+            continue
+
+    # If no formats matched, return the original cleaned date or an empty string
+    return cleaned_date
+
+def sort_by_date(data):
+    """Sort data rows based on the sanitized date in descending order."""
+    # Convert the sanitized date string back to a datetime object for sorting
+    def parse_date(date_str):
+        try:
+            return datetime.strptime(date_str, "%Y,%m,%d")
+        except ValueError:
+            return datetime.min  # Return a minimal date for unsorted or invalid dates
+
+    # Add the sanitized date to each row, sort, and remove the date again
+    sorted_data = sorted(data, key=lambda row: parse_date(sanitize_date(row[0])), reverse=True)
+    return sorted_data
+
+def create_pdf(data, filename=sys.argv[2]+"/output.pdf"):
     # Create a PDF document with adjusted margins
     pdf = SimpleDocTemplate(
         filename,
@@ -51,15 +92,18 @@ def create_pdf(data, filename="output.pdf"):
     # Define the headers
     headers = ["Visited Date", "Diagnosis/Prognosis", "Record Reference"]
 
-    # Process the data to sanitize the date column
+    # Process and sort the data
     sanitized_data = []
     for row in data:
         # Sanitize the date (first column) in each row
         sanitized_row = [sanitize_date(row[0])] + row[1:]
         sanitized_data.append(sanitized_row)
 
-    # Add headers and sanitized data to the table
-    table_data = [headers] + sanitized_data
+    # Sort the data by the sanitized date
+    sorted_data = sort_by_date(sanitized_data)
+
+    # Add headers and sorted data to the table
+    table_data = [headers] + sorted_data
 
     # Define column widths (adjust as necessary)
     column_widths = [2*inch, 3*inch, 2.5*inch]  # Example widths, adjust to fit your content
@@ -80,7 +124,6 @@ def create_pdf(data, filename="output.pdf"):
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Align text to the top of cells
-        ('WORDWRAP', (0, 0), (-1, -1), 'C'),  # Wrap text within cells
     ])
 
     table.setStyle(style)
@@ -89,11 +132,10 @@ def create_pdf(data, filename="output.pdf"):
     pdf.build([table])
 
 
+
 def main():
-    input_dir="./data"
+    input_dir= sys.argv[1]
     file_names=get_pdf_filenames(input_dir)
-    doc_text=extract_text_from_pdf(input_dir+"/" +file_names[0])
-    #Visited Date: [YYYY-MM-DD],# Diagnosis/Prognosis: [diagnosis/prognosis],# Record Reference: [record reference] 
     
     query_prefix="""You must give me anything in response except you must retrieve only and only the Visited Date, Diagnosis/Prognosis, and Record Reference for patient from infromation given below. Format the output as follows:
 
